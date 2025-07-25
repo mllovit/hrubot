@@ -2,6 +2,8 @@ import telethon.sync
 import collections
 import threading
 import asyncio
+import os
+from telethon.sessions import StringSession
 from datetime import datetime
 from telethon import TelegramClient, events
 from telethon.tl.types import UserStatusOnline, UserStatusOffline
@@ -21,13 +23,14 @@ def start_dummy_server():
 threading.Thread(target=start_dummy_server, daemon=True).start()
 
 # --- Configuration ---
-API_HASH = 'YOUR_API_HASH'
-API_ID = 'YOUR_API_ID'
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+API_ID = int(os.environ.get('API_ID'))
+API_HASH = os.environ.get('API_HASH')
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
+TELETHON_SESSION = os.environ.get('TELETHON_SESSION')
 
 # --- Telegram Clients ---
-client = TelegramClient('user_client.session', API_ID, API_HASH)
-bot = TelegramClient('bot_client.session', API_ID, API_HASH)
+client = TelegramClient(StringSession(TELETHON_SESSION), API_ID, API_HASH)
+bot = TelegramClient(None, API_ID, API_HASH)
 
 # --- In-memory Data Storage ---
 data = {}

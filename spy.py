@@ -1,11 +1,25 @@
+import telethon.sync
+import collections
+import threading
 from datetime import datetime, timedelta
 from sys import argv, exit
 from telethon import TelegramClient, events, connection
 from telethon.tl.types import UserStatusRecently, UserStatusEmpty, UserStatusOnline, UserStatusOffline, PeerUser, PeerChat, PeerChannel
 from time import mktime, sleep
-import telethon.sync
 from threading import Thread
-import collections
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+
+def start_dummy_server():
+    server = HTTPServer(("0.0.0.0", 10000), DummyHandler)
+    server.serve_forever()
+
+threading.Thread(target=start_dummy_server, daemon=True).start()
 
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 API_HASH = '5ac27b24bb13814945c06e03ab3bd6e9'
@@ -20,7 +34,6 @@ client.connect()
 bot = TelegramClient('bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 data = {}
-
 help_messages = ['/start - start online monitoring ',
          '/stop - stop online monitoring ',
          '/help - show help ',
@@ -268,7 +281,7 @@ async def getAll(event):
                 response += f'{j}: {i}\n'
         response += '\n'
     await event.respond(response)
-
+         
 def main():
     """Start the bot."""
     bot.run_until_disconnected()

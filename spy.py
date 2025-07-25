@@ -1,4 +1,3 @@
-import telethon.sync
 import collections
 import threading
 import asyncio
@@ -58,14 +57,20 @@ class Contact:
 
 @bot.on(events.NewMessage(pattern='^/logs$'))
 async def logs(event):
-    with open('spy_log.txt', 'r') as file:
-        str = file.read()
-    await event.respond(str)
+    try:
+        with open('spy_log.txt', 'r') as file:
+            content = file.read()
+        await event.respond(content if content else "No logs found")
+    except FileNotFoundError:
+        await event.respond("No log file found")
 
 @bot.on(events.NewMessage(pattern='/clearlogs$'))
 async def clearLogs(event):
-    open('spy_log.txt', 'w').close()
-    await event.respond('logs has been deleted')
+    try:
+        open('spy_log.txt', 'w').close()
+        await event.respond('Logs have been deleted')
+    except Exception as e:
+        await event.respond(f'Error clearing logs: {e}')
 
 @bot.on(events.NewMessage(pattern='^/clear$'))
 async def clear(event):
@@ -81,8 +86,8 @@ async def help(event):
 async def log(event):
     message = event.message
     id = message.chat_id
-    str = f'{datetime.now().strftime(DATETIME_FORMAT)}: [{id}]: {message.message}'
-    printToFile(str)
+    log_str = f'{datetime.now().strftime(DATETIME_FORMAT)}: [{id}]: {message.message}'
+    printToFile(log_str)
 
 @bot.on(events.NewMessage(pattern='^/stop$'))
 async def stop(event):
@@ -130,8 +135,6 @@ async def start(event):
                         contact.online = False
                         contact.last_offline = datetime.now()
                         await event.respond(f"{contact.name} is now 🔴 OFFLINE")
-                else:
-                    pass
 
             except Exception as e:
                 await event.respond(f"Error fetching {contact.name}: {e}")
@@ -143,49 +146,76 @@ async def start(event):
 
 @bot.on(events.NewMessage(pattern='^/add'))
 async def add(event):
-    person_info = event.message.message.split()
-    phone = person_info[1]
-    name = person_info[2]
-    id = event.chat_id
+    try:
+        person_info = event.message.message.split()
+        if len(person_info) < 3:
+            await event.respond("Usage: /add <phone> <name>")
+            return
+        
+        phone = person_info[1]
+        name = person_info[2]
+        id = event.chat_id
 
-    if id not in data:
-        data[id] = {}
-    user_data = data[id]
-    user_data.setdefault('contacts', [])
-    contact = Contact(phone, name)
-    user_data['contacts'].append(contact)
-    await event.respond(f'{name}: {phone} has been added')
+        if id not in data:
+            data[id] = {}
+        user_data = data[id]
+        user_data.setdefault('contacts', [])
+        contact = Contact(phone, name)
+        user_data['contacts'].append(contact)
+        await event.respond(f'{name}: {phone} has been added')
+    except Exception as e:
+        await event.respond(f"Error adding contact: {e}")
 
 @bot.on(events.NewMessage(pattern='^/remove'))
 async def remove(event):
-    index = int(event.message.message.split()[1])
-    id = event.chat_id
+    try:
+        parts = event.message.message.split()
+        if len(parts) < 2:
+            await event.respond("Usage: /remove <index>")
+            return
+            
+        index = int(parts[1])
+        id = event.chat_id
 
-    if id not in data:
-        data[id] = {}
-    contacts = data[id].get('contacts', [])
+        if id not in data:
+            data[id] = {}
+        contacts = data[id].get('contacts', [])
 
-    if 0 <= index < len(contacts):
-        del contacts[index]
-        await event.respond(f'User №{index} has been deleted')
-    else:
-        await event.respond('Incorrect index')
+        if 0 <= index < len(contacts):
+            removed_contact = contacts.pop(index)
+            await event.respond(f'User №{index} ({removed_contact.name}) has been deleted')
+        else:
+            await event.respond('Incorrect index')
+    except ValueError:
+        await event.respond("Please provide a valid number")
+    except Exception as e:
+        await event.respond(f"Error removing contact: {e}")
 
 @bot.on(events.NewMessage(pattern='^/setdelay'))
 async def setDelay(event):
-    delay = int(event.message.message.split()[1])
-    id = event.chat_id
-    if id not in data:
-        data[id] = {}
-    if delay >= 0:
-        data[id]['delay'] = delay
-        await event.respond(f'Delay has been updated to {delay}')
-    else:
-        await event.respond('Incorrect delay')
+    try:
+        parts = event.message.message.split()
+        if len(parts) < 2:
+            await event.respond("Usage: /setdelay <seconds>")
+            return
+            
+        delay = int(parts[1])
+        id = event.chat_id
+        if id not in data:
+            data[id] = {}
+        if delay >= 1:  # Minimum 1 second delay
+            data[id]['delay'] = delay
+            await event.respond(f'Delay has been updated to {delay} seconds')
+        else:
+            await event.respond('Delay must be at least 1 second')
+    except ValueError:
+        await event.respond("Please provide a valid number")
+    except Exception as e:
+        await event.respond(f"Error setting delay: {e}")
 
 @bot.on(events.NewMessage(pattern='^/disconnect$'))
 async def disconnect(event):
-    await event.respond('Bot gonna disconnect')
+    await event.respond('Bot is disconnecting...')
     await bot.disconnect()
 
 @bot.on(events.NewMessage(pattern='/list'))
@@ -193,17 +223,22 @@ async def list_users(event):
     id = event.chat_id
     contacts = data.get(id, {}).get('contacts', [])
     if contacts:
-        await event.respond('User list:\n' + '\n'.join([str(x) for x in contacts]))
+        contact_list = '\n'.join([f"{i}: {contact}" for i, contact in enumerate(contacts)])
+        await event.respond(f'User list:\n{contact_list}')
     else:
         await event.respond('List is empty')
 
 @bot.on(events.NewMessage(pattern='/getall'))
 async def getAll(event):
+    if not data:
+        await event.respond("No data available")
+        return
+        
     response = ''
     for key, value in data.items():
-        response += f'{key}:\n'
+        response += f'Chat {key}:\n'
         for j, i in value.items():
-            if isinstance(i, collections.Sequence) and not isinstance(i, str):
+            if isinstance(i, collections.abc.Sequence) and not isinstance(i, str):
                 response += f'{j}: ' + '\n'.join([str(x) for x in i]) + '\n'
             else:
                 response += f'{j}: {i}\n'
@@ -211,9 +246,12 @@ async def getAll(event):
     await event.respond(response)
 
 def printToFile(text):
-    with open('spy_log.txt','a') as f:
-        print(text)
-        f.write(text + '\n')
+    try:
+        with open('spy_log.txt','a') as f:
+            print(text)
+            f.write(text + '\n')
+    except Exception as e:
+        print(f"Error writing to log file: {e}")
 
 def utc2localtime(utc):
     pivot = mktime(utc.timetuple())

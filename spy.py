@@ -8,6 +8,7 @@ from datetime import datetime
 from telethon import TelegramClient, events
 from telethon.tl.types import UserStatusOnline, UserStatusOffline
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from telethon.tl.types import UserStatusOnline, UserStatusOffline, UserStatusRecently
 
 # --- Dummy Server for Render Health Checks ---
 class DummyHandler(BaseHTTPRequestHandler):
@@ -48,7 +49,7 @@ class Contact:
     def __str__(self):
         return f'{self.name}: {self.id}'
 
-# --- Background Monitoring Function (ROBUST VERSION) ---
+# --- Background Monitoring Function (SMART STATE CHANGE DETECTION) ---
 async def monitor_user(chat_id, user_data):
     try:
         while user_data.get('is_running', False):
@@ -57,24 +58,30 @@ async def monitor_user(chat_id, user_data):
 
             for contact in contacts:
                 try:
-                    # ### NEW DIAGNOSTIC LINE ###
-                    print(f"[MONITOR] Checking status for {contact.name} ({contact.id})...")
-
                     account = await client.get_entity(contact.id)
                     status = account.status
 
-                    # ### NEW DIAGNOSTIC LINE ### - This is the most important one!
-                    print(f"[MONITOR]   -> Status for {contact.name}: {type(status)} | Current bot state: contact.online={contact.online}")
+                    # V V V V V  THIS IS THE CORRECTED LOGIC V V V V V
 
-
-                    if isinstance(status, UserStatusOnline):
+                    # Check for any "active" signal (either truly online or recently active)
+                    if isinstance(status, (UserStatusOnline, UserStatusRecently)):
+                        # If our bot thought the user was offline before...
                         if not contact.online:
-                            contact.online = True
+                            # ...then this is the "went online" event.
+                            contact.online = True # Mark them as active in our system
                             await bot.send_message(chat_id, f"{contact.name} is now 🟢 ONLINE")
+
+                    # Check for the specific "offline" signal
                     elif isinstance(status, UserStatusOffline):
+                        # If our bot thought the user was active before...
                         if contact.online:
-                            contact.online = False
+                            # ...then this is the "went offline" event.
+                            contact.online = False # Mark them as inactive in our system
                             await bot.send_message(chat_id, f"{contact.name} is now 🔴 OFFLINE")
+                    
+                    # If the status is NoneType or something else, we do nothing and keep the state as is.
+
+                    # ^ ^ ^ ^ ^  THIS IS THE CORRECTED LOGIC ^ ^ ^ ^ ^
 
                 except (ValueError, TypeError):
                     await bot.send_message(chat_id, f"⚠️ Could no longer find user {contact.id}. Removing them from the list.")

@@ -247,8 +247,5 @@ async def main():
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':
-    # This approach correctly handles the asyncio event loop for Telethon.
-    # It gets the current event loop and runs the main() coroutine,
-    # which then blocks on run_until_disconnected, keeping the bot alive.
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    with client:
+        client.loop.run_until_complete(main())

@@ -25,9 +25,9 @@ threading.Thread(target=start_dummy_server, daemon=True).start()
 
 # --- Configuration ---
 DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
-API_HASH = 'YOUR_API_HASH'  # Replace with your actual API Hash
-API_ID = 'YOUR_API_ID'      # Replace with your actual API ID
-BOT_TOKEN = "YOUR_BOT_TOKEN" # Replace with your actual Bot Token
+API_HASH = '5ac27b24bb13814945c06e03ab3bd6e9'  # Replace with your actual API Hash
+API_ID = '27687138'      # Replace with your actual API ID
+BOT_TOKEN = "7613028738:AAFwz2nUjX7iXxZoobsSjJt2hEpULQ9yav0" # Replace with your actual Bot Token
 
 # --- Telegram Clients ---
 # This client logs in as a user account to check online status.

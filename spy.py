@@ -57,8 +57,15 @@ async def monitor_user(chat_id, user_data):
 
             for contact in contacts:
                 try:
+                    # ### NEW DIAGNOSTIC LINE ###
+                    print(f"[MONITOR] Checking status for {contact.name} ({contact.id})...")
+
                     account = await client.get_entity(contact.id)
                     status = account.status
+
+                    # ### NEW DIAGNOSTIC LINE ### - This is the most important one!
+                    print(f"[MONITOR]   -> Status for {contact.name}: {type(status)} | Current bot state: contact.online={contact.online}")
+
 
                     if isinstance(status, UserStatusOnline):
                         if not contact.online:
